@@ -1,0 +1,150 @@
+#include<stdio.h>
+#include<stdlib.h>
+#include<math.h>
+#include<string.h>
+#include<limits.h>
+
+struct set{
+    struct block** blocks;
+};
+struct block{
+    unsigned long tag;
+    int age;
+    int valBit;
+};
+struct set** cache;
+int main(int argc, char*argv[argc+1]){
+
+    int setx=atoi(argv[1]);
+    char* tblox=argv[2];
+    int blox;
+    strcpy(tblox,tblox+6);
+    blox=atoi(tblox);
+    char* policy=argv[3];
+    int blockSize=atoi(argv[4]);
+    setx/=(blox*blockSize);
+    //initialize cache array which holds sets
+    cache=malloc(setx*sizeof(struct set));
+    
+    //for-loop to initialize cache structure
+    for(int i=0;i<setx;i++){
+        //make each set in cache
+        struct set* temp=malloc(sizeof(struct set));
+        //make blocks array in set in cache
+        temp->blocks=malloc(blox*sizeof(struct block));
+        //input the blocks into the array
+        for(int j=0;j<blox;j++){
+            struct block* temp2=malloc(sizeof(struct block));
+            temp2->valBit=0;
+            temp2->age=INT_MIN;
+            temp2->tag=0;
+            temp->blocks[j]=temp2;
+        }
+        //place set structure into cache array
+        cache[i]=temp;
+    }
+
+    FILE* input =fopen(argv[5],"r");
+    char rw;
+    unsigned long hex;
+    int hitRet=0;
+    int missRet=0;
+    int mRead=0;
+    int mWrite=0;
+    int pol=0;
+    if(strcmp(policy,"lru")==0){
+        pol=1;
+    }
+    while(fscanf(input, "%c %lx ",&rw,&hex)!=-1)
+    {
+        unsigned long offBlock=log2(blockSize);
+        hex=hex>>(int)offBlock;
+        //get tag
+        unsigned long offSet=log2(setx);
+        unsigned long tag=hex>>(int)offSet;
+        //get set
+        unsigned long setInd=hex&(setx-1);
+        int hit=0;
+        //cache hit
+        for(int i=0;i<blox;i++){
+            if(cache[setInd]->blocks[i]->valBit==1 && cache[setInd]->blocks[i]->tag==tag){
+                hit=1;
+                hitRet++;
+                if(rw == 'W'){
+                    mWrite++;
+                }
+                if(pol==1){
+                    cache[setInd]->blocks[i]->age=-1;
+                    for(int j=0;j<blox;j++){
+                        cache[setInd]->blocks[j]->age++;
+                    }
+                }
+            }
+        }
+        //cache miss
+        if(hit==0){
+            missRet++;
+            if(rw == 'W'){
+                    mWrite++;
+                    mRead++;
+            }
+            if(rw == 'R'){
+                mRead++;
+            }
+            int emp=0;
+            for(int i=0;i<blox;i++){
+                if(cache[setInd]->blocks[i]->valBit==0){
+                    cache[setInd]->blocks[i]->valBit=1;
+                    cache[setInd]->blocks[i]->tag=tag;
+                    cache[setInd]->blocks[i]->age=-1;
+                    for(int j=0;j<blox;j++){
+                        cache[setInd]->blocks[j]->age++;
+                    }
+                    emp=1;
+                    break;
+                }
+            }
+            if(emp==0){
+                int ind=0;
+                int max=-1;
+                for(int i=0;i<blox;i++){
+                    if(cache[setInd]->blocks[i]->age>max){
+                        max=cache[setInd]->blocks[i]->age;
+                        ind=i;
+                    }
+                }
+                cache[setInd]->blocks[ind]->tag=tag;
+                cache[setInd]->blocks[ind]->valBit=1;
+                cache[setInd]->blocks[ind]->age=-1;
+                for(int j=0;j<blox;j++){
+                    if (cache[setInd]->blocks[j]->valBit != 0)
+                        cache[setInd]->blocks[j]->age++;
+                }
+            }
+        }
+
+    }
+
+    //print totals
+    printf("%s %d\n","memread:",mRead);
+    printf("%s %d\n","memwrite:",mWrite);
+    printf("%s %d\n","cachehit:",hitRet);
+    printf("%s %d\n","cachemiss:",missRet);
+
+    //free each of the blocks in each set
+    for(int i=0;i<setx;i++){
+        for(int j=0;j<blox;j++){
+            free(cache[i]->blocks[j]);
+        }
+    }
+    //free blocks array in each set
+    for(int i=0;i<setx;i++){
+        free(cache[i]->blocks);
+    }
+    //free each set in cache
+    for(int i=0;i<setx;i++){
+        free(cache[i]);
+    }
+    //free cache
+    free(cache);
+}
