@@ -1,0 +1,288 @@
+#include<stdio.h>
+#include<stdlib.h>
+#include<math.h>
+#include<string.h>
+#include<limits.h>
+
+struct set{
+    struct block** blocks;
+};
+struct block{
+    unsigned long tag;
+    int age;
+    int valBit;
+};
+struct set** cache;
+struct set** cache2;
+
+//functions
+void addToL1();
+
+void addToL2();
+
+
+int s1;
+int b1;
+int bs1;
+int s2;
+int b2;
+unsigned long tag;
+unsigned long tempTag;
+unsigned long tempSet;
+int tempT=0;
+int set1Ind;
+int set2Ind;
+int main(int argc, char*argv[argc+1]){
+
+    //inputs for l1
+    s1=atoi(argv[1]);
+    char* tb1=argv[2];
+    strcpy(tb1,tb1+6);
+    b1=atoi(tb1);
+    char* p1=argv[3];
+    bs1=atoi(argv[4]);
+    s1/=(b1*bs1);
+
+    //inputs for l2
+    s2=atoi(argv[5]);
+    char* tb2=argv[6];
+    strcpy(tb2,tb2+6);
+    b2=atoi(tb2);
+    char* p2=argv[7];
+    s2/=(b2*bs1);
+
+    //initialize cache array which holds sets
+    cache=malloc(s1*sizeof(struct set));
+    cache2=malloc(s2*sizeof(struct set));
+    
+    //for-loop to initialize cache structure
+    for(int i=0;i<s1;i++){
+        //make each set in cache
+        struct set* temp=malloc(sizeof(struct set));
+        //make blocks array in set in cache
+        temp->blocks=malloc(b1*sizeof(struct block));
+        //input the blocks into the array
+        for(int j=0;j<b1;j++){
+            struct block* temp2=malloc(sizeof(struct block));
+            temp2->valBit=0;
+            temp2->age=INT_MIN;
+            temp2->tag=0;
+            temp->blocks[j]=temp2;
+        }
+        //place set structure into cache array
+        cache[i]=temp;
+    }
+
+    //forloop for second cache
+    for(int i=0;i<s2;i++){
+        //make each set in cache
+        struct set* temp=malloc(sizeof(struct set));
+        //make blocks array in set in cache
+        temp->blocks=malloc(b2*sizeof(struct block));
+        //input the blocks into the array
+        for(int j=0;j<b2;j++){
+            struct block* temp2=malloc(sizeof(struct block));
+            temp2->valBit=0;
+            temp2->age=INT_MIN;
+            temp2->tag=0;
+            temp->blocks[j]=temp2;
+        }
+        //place set structure into cache array
+        cache2[i]=temp;
+    }
+
+    FILE* input =fopen(argv[8],"r");
+    char rw;
+    unsigned long hex;
+    int hit1Ret=0;
+    int miss1Ret=0;
+    int hit2Ret=0;
+    int miss2Ret=0;
+    int mRead=0;
+    int mWrite=0;
+    int pol1=0;
+    int pol2=0;
+    if(strcmp(p1,"lru")==0){
+        pol1=1;
+    }
+    if(strcmp(p2,"lru")==0){
+        pol2=1;
+        pol2--;
+    }
+    while(fscanf(input, "%c %lx ",&rw,&hex)!=-1)
+    {
+        tempT=0;
+        if(rw =='W'){
+            mWrite++;
+        }
+        unsigned long offBlock=log2(bs1);
+        hex=hex>>(int)offBlock;
+        tag=hex;
+        //get set for 1st cache
+        set1Ind=hex&(s1-1);
+        set2Ind=hex&(s2-1);
+        int hit=0;
+        //cache hit
+        for(int i=0;i<b1;i++){
+            if(cache[set1Ind]->blocks[i]->valBit==1 && cache[set1Ind]->blocks[i]->tag==tag){
+                hit=1;
+                hit1Ret++;
+                if(pol1==1){
+                    cache[set1Ind]->blocks[i]->age=-1;
+                    for(int j=0;j<b1;j++){
+                        cache[set1Ind]->blocks[j]->age++;
+                    }
+                }
+                break;
+            }
+        }
+        //l1 miss
+        if(hit==0){
+            int hit2=0;
+            miss1Ret++;
+            //check for l2 hit
+            for(int i=0;i<b2;i++){
+                //cache2 hit
+                if(cache2[set2Ind]->blocks[i]->valBit==1 && cache2[set2Ind]->blocks[i]->tag==tag){
+                    hit2Ret++;
+                    hit2=1;
+                    //empty L2
+                    cache2[set2Ind]->blocks[i]->tag=0;
+                    cache2[set2Ind]->blocks[i]->age=INT_MIN;
+                    cache2[set2Ind]->blocks[i]->valBit=0;
+                    //add it into l1
+                    addToL1();
+                    //if l1s thing needs to go into l2
+                    if(tempT==1){
+                        addToL2();
+                    }
+                }
+            }
+            //l1 and l2 miss
+            if(hit2==0){
+                miss2Ret++;
+                mRead++;
+                addToL1();
+                if(tempT==1){
+                    addToL2();
+                }
+            }
+        }
+    }
+
+    //print totals
+    printf("%s %d\n","memread:",mRead);
+    printf("%s %d\n","memwrite:",mWrite);
+    printf("%s %d\n","l1cachehit:",hit1Ret);
+    printf("%s %d\n","l1cachemiss:",miss1Ret);
+    printf("%s %d\n","l2cachehit:",hit2Ret);
+    printf("%s %d\n","l2cachemiss:",miss2Ret);
+
+    //free each of the blocks in each set
+    for(int i=0;i<s1;i++){
+        for(int j=0;j<b1;j++){
+            free(cache[i]->blocks[j]);
+        }
+    }
+    //free blocks array in each set
+    for(int i=0;i<s1;i++){
+        free(cache[i]->blocks);
+    }
+    //free each set in cache
+    for(int i=0;i<s1;i++){
+        free(cache[i]);
+    }
+    //free cache
+    free(cache);
+
+    //free each of the blocks in each set
+    for(int i=0;i<s2;i++){
+        for(int j=0;j<b2;j++){
+            free(cache2[i]->blocks[j]);
+        }
+    }
+    //free blocks array in each set
+    for(int i=0;i<s2;i++){
+        free(cache2[i]->blocks);
+    }
+    //free each set in cache
+    for(int i=0;i<s2;i++){
+        free(cache2[i]);
+    }
+    //free cache
+    free(cache2);
+}
+
+void addToL1(){
+    int emp=0;
+    //put it in if L1 has empty space
+    for(int i=0;i<b1;i++){
+        if(cache[set1Ind]->blocks[i]->valBit==0){
+            emp=1;
+            cache[set1Ind]->blocks[i]->valBit=1;
+            cache[set1Ind]->blocks[i]->tag=tag;
+            cache[set1Ind]->blocks[i]->age=-1;
+            for(int z=0;z<b1;z++){
+                if(cache[set1Ind]->blocks[z]->valBit!=0){
+                    cache[set1Ind]->blocks[z]->age++;
+                }
+            }
+            tempT=0;
+            break;
+        }
+    }
+    //evict something and put tag in
+    if(emp==0){
+        int ind=0;
+        int max=-1;
+        for(int i=0;i<b1;i++){
+            if(cache[set1Ind]->blocks[i]->age>max){
+                max=cache[set1Ind]->blocks[i]->age;
+                ind=i;
+            }
+        }
+        tempTag=cache[set1Ind]->blocks[ind]->tag;
+        tempT=1;
+        tempSet=tempTag&(s2-1);
+        cache[set1Ind]->blocks[ind]->tag=tag;
+        cache[set1Ind]->blocks[ind]->valBit=1;
+        cache[set1Ind]->blocks[ind]->age=-1;
+        for(int i=0;i<b1;i++){
+            cache[set1Ind]->blocks[i]->age++;
+        }
+    }
+}
+
+void addToL2(){
+    int emp=0;
+    //put it in if L2 has empty space
+    for(int i=0;i<b2;i++){
+        if(cache2[tempSet]->blocks[i]->valBit==0){
+            emp=1;
+            cache2[tempSet]->blocks[i]->valBit=1;
+            cache2[tempSet]->blocks[i]->tag=tempTag;
+            cache2[tempSet]->blocks[i]->age=-1;
+            for(int z=0;z<b2;z++){
+                cache2[tempSet]->blocks[z]->age++;
+            }
+            break;
+        }
+    }
+    //evict something and put tag in
+    if(emp==0){
+        int ind=0;
+        int max=-1;
+        for(int i=0;i<b2;i++){
+            if(cache2[tempSet]->blocks[i]->age>max){
+                max=cache2[tempSet]->blocks[i]->age;
+                ind=i;
+            }
+        }
+        cache2[tempSet]->blocks[ind]->tag=tempTag;
+        cache2[tempSet]->blocks[ind]->valBit=1;
+        cache2[tempSet]->blocks[ind]->age=-1;
+        for(int i=0;i<b2;i++){
+            cache2[tempSet]->blocks[i]->age++;
+        }
+    }
+}
